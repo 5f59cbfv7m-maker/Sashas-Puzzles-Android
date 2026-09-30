@@ -1,0 +1,206 @@
+#!/usr/bin/env python3
+"""Converts the iOS string catalog into Android resources.
+
+The iOS app (Sasha's Puzzles, Localizable.xcstrings) is the source of truth for
+every translation. This script turns it into res/values*/strings.xml, keeping
+plural variations, and writes `PictureTitles.kt`, which maps each bundled
+photograph to its translated title.
+
+Usage:
+    Scripts/import-ios-strings.py <path to Localizable.xcstrings> <path to Pictures/>
+
+Resource names are derived from the English text, so they are stable as long as
+the English wording is; `Scripts/string-names.txt` lists them for reference.
+"""
+import json
+import os
+import re
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RES = os.path.join(ROOT, "app/src/main/res")
+KOTLIN = os.path.join(ROOT, "app/src/main/java/com/kirillrychkov/sashaspuzzles/library/PictureTitles.kt")
+
+LOCALES = {
+    "en": "values",
+    "ru": "values-ru",
+    "de": "values-de",
+    "fr": "values-fr",
+    "es": "values-es",
+    "it": "values-it",
+    "pt-BR": "values-pt-rBR",
+    "ja": "values-ja",
+    "ko": "values-ko",
+    "zh-Hans": "values-b+zh+Hans",
+}
+
+# aapt rejects resource names that are Java keywords ("Abstract", "Break", "New"…).
+JAVA_KEYWORDS = set("""abstract assert boolean break byte case catch char class const continue default do double
+else enum extends final finally float for goto if implements import instanceof int interface long native new
+package private protected public return short static strictfp super switch synchronized this throw throws
+transient try void volatile while true false null""".split())
+
+SPEC = re.compile(r"%(?:(\d+)\$)?(lld|ld|d|@)")
+
+
+def slug(key):
+    text = SPEC.sub(" x ", key).lower()
+    text = text.replace("’", "").replace("'", "")
+    words = re.findall(r"[a-z0-9]+", text)
+    name = "_".join(words)[:48].strip("_") or "text"
+    if name[0].isdigit():
+        name = "n_" + name
+    if name in JAVA_KEYWORDS:
+        name += "_label"
+    return name
+
+
+SUBSTITUTION = re.compile(r"%(\d+)\$#@\w+@")
+
+
+# Plural forms Android's lint expects per language; missing ones repeat "other".
+REQUIRED_QUANTITIES = {"fr": ("one", "many"), "es": ("one", "many"), "it": ("one", "many"), "pt-BR": ("one", "many"),
+                       "ru": ("one", "few", "many"), "de": ("one",), "en": ("one",)}
+
+
+def complete(forms, locale):
+    for quantity in REQUIRED_QUANTITIES.get(locale, ()):
+        forms.setdefault(quantity, forms["other"])
+    return forms
+
+
+def convert(value, string_args=()):
+    """iOS format specifiers to Android positional ones; escapes for aapt.
+
+    A plural substitution (`%2$#@days@`) becomes a string argument: Android has
+    no plurals inside a string, so the app formats that number with its own
+    `<plurals>` (named `<string>_argN`) and passes the text in. `string_args`
+    lists the arguments that are passed that way in every language.
+    """
+    value = SUBSTITUTION.sub(r"%\1$@", value)
+    counter = 0
+    parts = []
+    last = 0
+    has_args = bool(SPEC.search(value))
+    for match in SPEC.finditer(value):
+        literal = value[last:match.start()]
+        parts.append(literal.replace("%", "%%") if has_args else literal)
+        if match.group(1):
+            index = int(match.group(1))
+        else:
+            counter += 1
+            index = counter
+        kind = "s" if match.group(2) == "@" or index in string_args else "d"
+        parts.append(f"%{index}${kind}")
+        last = match.end()
+    tail = value[last:]
+    parts.append(tail.replace("%", "%%") if has_args else tail)
+    text = "".join(parts)
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    text = text.replace("\\", "\\\\").replace("'", "\\'").replace('"', '\\"').replace("\n", "\\n")
+    if text.startswith("@") or text.startswith("?"):
+        text = "\\" + text
+    return text
+
+
+def main():
+    catalog_path, pictures = sys.argv[1], sys.argv[2]
+    catalog = json.load(open(catalog_path, encoding="utf-8"))["strings"]
+
+    names = {}
+    used = set()
+    for key in sorted(catalog):
+        if not key.strip():
+            continue
+        base = slug(key)
+        name, n = base, 2
+        while name in used:
+            name, n = f"{base}_{n}", n + 1
+        used.add(name)
+        names[key] = name
+
+    plural_keys = {
+        key for key, entry in catalog.items()
+        if any("variations" in loc for loc in entry.get("localizations", {}).values())
+    }
+
+    # Arguments that some language spells with a plural substitution.
+    substituted = {}
+    for key, entry in catalog.items():
+        for loc in entry.get("localizations", {}).values():
+            for sub in loc.get("substitutions", {}).values():
+                substituted.setdefault(key, set()).add(sub["argNum"])
+
+    for locale, folder in LOCALES.items():
+        lines = ['<?xml version="1.0" encoding="utf-8"?>',
+                 "<!-- Generated by Scripts/import-ios-strings.py from the iOS string catalog. Do not edit. -->",
+                 "<resources>"]
+        for key, name in names.items():
+            loc = catalog[key].get("localizations", {}).get(locale)
+            if loc is None and locale != "en":
+                continue
+            if key in plural_keys:
+                forms = {}
+                if loc and "variations" in loc:
+                    for quantity, unit in loc["variations"]["plural"].items():
+                        forms[quantity] = unit["stringUnit"]["value"]
+                elif loc and "stringUnit" in loc:
+                    forms = {"other": loc["stringUnit"]["value"]}
+                else:
+                    forms = {"other": key}
+                forms = complete(forms, locale)
+                lines.append(f'    <plurals name="{name}">')
+                for quantity in ("zero", "one", "two", "few", "many", "other"):
+                    if quantity in forms:
+                        lines.append(f'        <item quantity="{quantity}">{convert(forms[quantity])}</item>')
+                lines.append("    </plurals>")
+            else:
+                value = loc["stringUnit"]["value"] if loc and "stringUnit" in loc else key
+                args = substituted.get(key, set())
+                lines.append(f'    <string name="{name}">{convert(value, args)}</string>')
+                subs = {s["argNum"]: s for s in (loc or {}).get("substitutions", {}).values()}
+                for arg in sorted(args):
+                    forms = {"other": "%lld"}
+                    if arg in subs:
+                        forms = {q: u["stringUnit"]["value"].replace("%arg", "%lld")
+                                 for q, u in subs[arg]["variations"]["plural"].items()}
+                    elif locale == "en":
+                        # English spells the number inline; recover its noun from the key.
+                        forms = {"other": "%lld"}
+                    forms = complete(forms, locale)
+                    lines.append(f'    <plurals name="{name}_arg{arg}">')
+                    for quantity in ("zero", "one", "two", "few", "many", "other"):
+                        if quantity in forms:
+                            lines.append(f'        <item quantity="{quantity}">{convert(forms[quantity])}</item>')
+                    lines.append("    </plurals>")
+        lines.append("</resources>")
+        directory = os.path.join(RES, folder)
+        os.makedirs(directory, exist_ok=True)
+        with open(os.path.join(directory, "strings.xml"), "w", encoding="utf-8") as out:
+            out.write("\n".join(lines) + "\n")
+
+    with open(os.path.join(ROOT, "Scripts/string-names.txt"), "w", encoding="utf-8") as out:
+        for key, name in names.items():
+            kind = "plurals" if key in plural_keys else "string"
+            out.write(f"{kind}.{name}\t{key}\n")
+
+    entries = []
+    for file in sorted(os.listdir(pictures)):
+        stem, ext = os.path.splitext(file)
+        if ext.lower() not in (".jpg", ".jpeg", ".png") or "_" not in stem:
+            continue
+        title = stem.split("_", 1)[1]
+        if title in names and title not in plural_keys:
+            entries.append(f'        "{stem}" to R.string.{names[title]},')
+    with open(KOTLIN, "w", encoding="utf-8") as out:
+        out.write("// Generated by Scripts/import-ios-strings.py. Do not edit.\n")
+        out.write("package com.kirillrychkov.sashaspuzzles.library\n\n")
+        out.write("import com.kirillrychkov.sashaspuzzles.R\n\n")
+        out.write("/** Translated title of every bundled photograph, by file name without extension. */\n")
+        out.write("object PictureTitles {\n    val byStem: Map<String, Int> = mapOf(\n")
+        out.write("\n".join(entries) + "\n    )\n}\n")
+    print(f"{len(names)} strings, {len(plural_keys)} plurals, {len(entries)} picture titles")
+
+
+if __name__ == "__main__":
+    main()

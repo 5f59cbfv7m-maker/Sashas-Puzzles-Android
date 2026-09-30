@@ -1,0 +1,15 @@
+.gradle/
+.kotlin/
+build/
+/local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Signing: the Google Play upload key and its passwords never enter the repository.
+keystore.properties
+*.jks
+*.keystore
