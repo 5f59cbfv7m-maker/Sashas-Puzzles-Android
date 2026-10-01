@@ -13,10 +13,12 @@ unfolded it lays out like a tablet, and folding or unfolding in the middle of a 
 - The board: drag pieces out of the tray, snapping and merging, pinch to zoom, two fingers to pan,
   hint, undo and redo, scatter and gather, the picture guide under the board
 - Saved games and personal best times
+- The profile: your name, totals, the last 12 weeks, and the 14 achievements of the iOS app,
+  which drop onto the completion card as they are earned
 - Sounds, the library and board music, haptics
 - Light and dark themes, ten languages (the same translations as the iOS app)
 
-Planned next: profile and achievements, Google Play Games leaderboards, puzzles from your own photos.
+Planned next: Google Play Games leaderboards, puzzles from your own photos.
 
 ## Building
 

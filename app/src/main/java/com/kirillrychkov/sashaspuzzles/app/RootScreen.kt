@@ -46,6 +46,7 @@ import com.kirillrychkov.sashaspuzzles.R
 import com.kirillrychkov.sashaspuzzles.game.GameScreen
 import com.kirillrychkov.sashaspuzzles.game.SetupScreen
 import com.kirillrychkov.sashaspuzzles.library.HomeScreen
+import com.kirillrychkov.sashaspuzzles.library.ProfileScreen
 import com.kirillrychkov.sashaspuzzles.settings.AppSettings
 import com.kirillrychkov.sashaspuzzles.settings.SettingsScreen
 import com.kirillrychkov.sashaspuzzles.ui.PuzzleTheme
@@ -92,7 +93,7 @@ fun RootScreen(model: AppModel, skipSplash: Boolean = false) {
         val colors = Theme.colors
         CompositionLocalProvider(LocalTextSelectionColors provides TextSelectionColors(colors.accent, colors.accent.copy(alpha = 0.3f))) {
             Box(Modifier.fillMaxSize().background(colors.bg)) {
-                BackHandler(enabled = route != AppModel.Route.Home || model.sheet == AppModel.Sheet.SETTINGS) { model.back() }
+                BackHandler(enabled = route != AppModel.Route.Home || model.sheet == AppModel.Sheet.SETTINGS || model.sheet == AppModel.Sheet.PROFILE) { model.back() }
 
                 AnimatedContent(
                     targetState = route,
@@ -107,6 +108,9 @@ fun RootScreen(model: AppModel, skipSplash: Boolean = false) {
                     }
                 }
 
+                AnimatedVisibility(model.sheet == AppModel.Sheet.PROFILE, enter = fadeIn(), exit = fadeOut()) {
+                    ProfileScreen(model) { model.sheet = null }
+                }
                 AnimatedVisibility(model.sheet == AppModel.Sheet.SETTINGS, enter = fadeIn(), exit = fadeOut()) {
                     SettingsScreen(model) { model.sheet = null }
                 }

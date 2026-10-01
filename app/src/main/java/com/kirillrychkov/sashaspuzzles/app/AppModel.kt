@@ -9,6 +9,7 @@ import com.kirillrychkov.sashaspuzzles.library.ImageStore
 import com.kirillrychkov.sashaspuzzles.library.Library
 import com.kirillrychkov.sashaspuzzles.model.LibraryItem
 import com.kirillrychkov.sashaspuzzles.model.PuzzleAspect
+import com.kirillrychkov.sashaspuzzles.persistence.Achievement
 import com.kirillrychkov.sashaspuzzles.persistence.CompletionSummary
 import com.kirillrychkov.sashaspuzzles.persistence.GameSnapshot
 import com.kirillrychkov.sashaspuzzles.persistence.PlayerStats
@@ -35,7 +36,7 @@ class AppModel(context: Context) {
         data object Game : Route
     }
 
-    enum class Sheet { ONBOARDING, SETTINGS }
+    enum class Sheet { ONBOARDING, SETTINGS, PROFILE }
 
     val scope = MainScope()
     val settings = AppSettings(context)
@@ -51,14 +52,29 @@ class AppModel(context: Context) {
     var sheet: Sheet? by mutableStateOf(null)
     var session: GameSession? by mutableStateOf(null)
         private set
-    /** Record news for the game that just finished. */
+    /** Record and achievement news for the game that just finished. */
     var lastCompletion: CompletionSummary? by mutableStateOf(null)
         private set
     var savedGames: List<GameSnapshot> by mutableStateOf(emptyList())
         private set
 
+    /** Debug stages only: the medals the next completion reveals, whatever was earned. */
+    private var forcedAchievements: List<Achievement>? = null
+
     init {
         refreshSaves()
+        if (settings.seenAchievements == null) markAchievementsSeen()
+    }
+
+    /** Unlocked achievements the player has not looked at in the profile yet. */
+    val unseenAchievements: List<Achievement>
+        get() {
+            val seen = settings.seenAchievements.orEmpty()
+            return stats.unlocked.filter { it.key !in seen }
+        }
+
+    fun markAchievementsSeen() {
+        settings.seenAchievements = stats.unlocked.map { it.key }.toSet()
     }
 
     val resumable: List<GameSnapshot> get() = savedGames.filter { !it.isComplete }
@@ -100,7 +116,7 @@ class AppModel(context: Context) {
 
     /** Back from wherever the player is: the game and the setup both lead home. */
     fun back(): Boolean {
-        if (sheet == Sheet.SETTINGS) { sheet = null; return true }
+        if (sheet == Sheet.SETTINGS || sheet == Sheet.PROFILE) { sheet = null; return true }
         if (route != Route.Home) { showLibrary(); return true }
         return false
     }
@@ -116,11 +132,12 @@ class AppModel(context: Context) {
     private fun attach(new: GameSession) {
         lastCompletion = null
         new.onComplete = { finished ->
-            lastCompletion = stats.record(SolvedRecord(
+            val summary = stats.record(SolvedRecord(
                 itemId = finished.item.id, category = finished.item.category, pieces = finished.pieceCount,
                 targetPieces = finished.targetPieces, elapsedMillis = finished.elapsedMillis,
                 date = System.currentTimeMillis(), isUserPhoto = finished.item.isUserPhoto,
             ))
+            lastCompletion = forcedAchievements?.let { summary.copy(newAchievements = it) } ?: summary
         }
         session = new
     }
@@ -140,12 +157,20 @@ class AppModel(context: Context) {
     /**
      * Debug builds only: drives the app into a named state so a screen can be
      * checked without playing to it — `adb shell am start -n …/.MainActivity --es stage completed`.
-     * Stages: `board` (48 pieces), `scattered`, `completed` (12 pieces, solved).
+     * Stages: `board` (48 pieces), `scattered`, `completed` (12 pieces, solved),
+     * `profile` (every medal earned so far marked new). `--es achievements sprinter,nightmare`
+     * makes the completion reveal those medals.
      */
-    fun runStage(stage: String) {
+    fun runStage(stage: String, achievements: String? = null) {
         val item = library.builtIn.getOrNull(3) ?: return
         settings.hasSeenOnboarding = true
         sheet = null
+        forcedAchievements = achievements?.split(',')?.mapNotNull { Achievement.fromKey(it.trim()) }
+        if (stage == "profile") {
+            settings.seenAchievements = emptySet()
+            sheet = Sheet.PROFILE
+            return
+        }
         start(item, PuzzleAspect.ORIGINAL, if (stage == "completed") 12 else 48)
         val live = session ?: return
         scope.launch {

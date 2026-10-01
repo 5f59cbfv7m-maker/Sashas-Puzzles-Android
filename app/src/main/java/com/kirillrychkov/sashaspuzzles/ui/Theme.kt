@@ -247,8 +247,8 @@ fun PillButton(
 
 /** Small uppercase section label. */
 @Composable
-fun Kicker(text: String, modifier: Modifier = Modifier) {
-    Text(text.uppercase(), modifier, style = Theme.body(12, FontWeight.Bold).copy(letterSpacing = 1.2.sp), color = Theme.colors.muted)
+fun Kicker(text: String, modifier: Modifier = Modifier, color: Color = Theme.colors.muted) {
+    Text(text.uppercase(), modifier, style = Theme.body(12, FontWeight.Bold).copy(letterSpacing = 1.2.sp), color = color)
 }
 
 enum class TagStyle { SAGE, SAGE_TINT, CARD }

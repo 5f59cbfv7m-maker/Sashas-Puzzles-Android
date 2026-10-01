@@ -39,6 +39,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
@@ -50,6 +51,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -64,7 +66,10 @@ import androidx.compose.ui.unit.dp
 import com.kirillrychkov.sashaspuzzles.R
 import com.kirillrychkov.sashaspuzzles.app.AppModel
 import com.kirillrychkov.sashaspuzzles.engine.SplitMix64
+import com.kirillrychkov.sashaspuzzles.persistence.Achievement
+import kotlinx.coroutines.launch
 import com.kirillrychkov.sashaspuzzles.ui.Blob
+import com.kirillrychkov.sashaspuzzles.ui.FittedLine
 import com.kirillrychkov.sashaspuzzles.ui.PillButton
 import com.kirillrychkov.sashaspuzzles.ui.PillStyle
 import com.kirillrychkov.sashaspuzzles.ui.ProgressBar
@@ -182,9 +187,16 @@ fun PauseOverlay(model: AppModel, session: GameSession) {
 fun CompletionOverlay(model: AppModel, session: GameSession) {
     val colors = Theme.colors
     val short = isShort()
+    // The Fold's cover screen and small phones: the card's insets and buttons tighten.
+    val narrow = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 400
     var appeared by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { appeared = true }
     val pop by animateFloatAsState(if (appeared) 1f else 0f, spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessLow), label = "pop")
+
+    // The nightmare medal falls in the dark and lands with a flash.
+    val night = remember { androidx.compose.animation.core.Animatable(0f) }
+    val flash = remember { androidx.compose.animation.core.Animatable(0f) }
+    val scope = rememberCoroutineScope()
 
     val pieces = session.pieceCount
     val locale = androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
@@ -203,7 +215,7 @@ fun CompletionOverlay(model: AppModel, session: GameSession) {
                     .scale(0.9f + 0.1f * pop).alpha(pop.coerceIn(0f, 1f))
                     .shadow(16.dp, RoundedCornerShape(Theme.RADIUS_PANEL.dp))
                     .background(colors.card, RoundedCornerShape(Theme.RADIUS_PANEL.dp))
-                    .padding(horizontal = if (short) 28.dp else 40.dp, vertical = if (short) 24.dp else 40.dp),
+                    .padding(horizontal = if (narrow) 20.dp else if (short) 28.dp else 40.dp, vertical = if (short) 24.dp else if (narrow) 28.dp else 40.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 val checkmark = @Composable {
@@ -229,7 +241,7 @@ fun CompletionOverlay(model: AppModel, session: GameSession) {
                     Box(Modifier.padding(top = 6.dp)) { subtitle() }
                 }
 
-                Row(Modifier.fillMaxWidth().padding(top = if (short) 16.dp else 26.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.fillMaxWidth().padding(top = if (short) 16.dp else 26.dp), horizontalArrangement = Arrangement.spacedBy(if (narrow) 8.dp else 12.dp)) {
                     Stat(TimeFormatting.clock(session.elapsedMillis), stringResource(R.string.time_2), short)
                     val best = model.lastCompletion?.previousBestMillis
                     if (best != null && best - session.elapsedMillis >= 1000) {
@@ -240,12 +252,36 @@ fun CompletionOverlay(model: AppModel, session: GameSession) {
                     Stat(pace, stringResource(R.string.per_minute), short)
                 }
 
-                Row(Modifier.fillMaxWidth().padding(top = if (short) 18.dp else 26.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PillButton(stringResource(R.string.play_again), Modifier.weight(1f), expand = true) { model.restartCurrent() }
-                    PillButton(stringResource(R.string.library), Modifier.weight(1f), style = PillStyle.GHOST, expand = true) { model.showLibrary() }
+                val news = model.lastCompletion?.newAchievements.orEmpty()
+                if (news.isNotEmpty()) {
+                    Box(Modifier.padding(top = if (short) 12.dp else 18.dp)) {
+                        AchievementReveal(model, news, short,
+                            onDrop = { if (it == Achievement.NIGHTMARE) scope.launch { night.animateTo(0.6f, tween(400)) } },
+                            onLand = {
+                                if (it == Achievement.NIGHTMARE) scope.launch {
+                                    night.snapTo(0f)
+                                    flash.snapTo(0.75f)
+                                    flash.animateTo(0f, tween(800))
+                                }
+                            })
+                    }
+                }
+
+                if (narrow && !short) {
+                    Column(Modifier.fillMaxWidth().padding(top = 22.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        PillButton(stringResource(R.string.play_again), expand = true) { model.restartCurrent() }
+                        PillButton(stringResource(R.string.library), style = PillStyle.GHOST, expand = true) { model.showLibrary() }
+                    }
+                } else {
+                    Row(Modifier.fillMaxWidth().padding(top = if (short) 18.dp else 26.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        PillButton(stringResource(R.string.play_again), Modifier.weight(1f), expand = true) { model.restartCurrent() }
+                        PillButton(stringResource(R.string.library), Modifier.weight(1f), style = PillStyle.GHOST, expand = true) { model.showLibrary() }
+                    }
                 }
             }
         }
+        if (night.value > 0f) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = night.value)))
+        if (flash.value > 0f) Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = flash.value)))
     }
 }
 
@@ -258,8 +294,9 @@ private fun androidx.compose.foundation.layout.RowScope.Stat(value: String, titl
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         val color = if (tinted) colors.onSageTint else colors.text
-        Text(value, style = Theme.display(24), color = color, maxLines = 1)
-        Text(title, style = Theme.body(12), color = color, maxLines = 1, textAlign = TextAlign.Center)
+        // Large system text in a third of a narrow card shrinks rather than cuts.
+        FittedLine(value, Theme.display(24), color, minScale = 0.4f)
+        FittedLine(title, Theme.body(12), color, minScale = 0.6f)
     }
 }
 

@@ -26,7 +26,9 @@ import kotlinx.coroutines.launch
  */
 class Feedback(private val context: Context) {
 
-    enum class Tone(val resource: Int) { SNAP(R.raw.snap), MERGE(R.raw.merge), COMPLETE(R.raw.complete) }
+    enum class Tone(val resource: Int) {
+        SNAP(R.raw.snap), MERGE(R.raw.merge), COMPLETE(R.raw.complete), ACHIEVEMENT(R.raw.achievement)
+    }
     enum class Music(val resource: Int) {
         LIBRARY(R.raw.music_library), BOARD_PIANO(R.raw.music_piano), BOARD_VIBRAPHONE(R.raw.music_vibraphone)
     }

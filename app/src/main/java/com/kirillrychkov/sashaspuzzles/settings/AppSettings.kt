@@ -44,6 +44,13 @@ class AppSettings(context: Context) {
     var hasSeenOnboarding by pref(prefs.getBoolean("onboarding", false)) { v -> prefs.edit { putBoolean("onboarding", v) } }
     /** Asked on the last onboarding step; capped so a pasted paragraph cannot break the header. */
     var playerName by pref(prefs.getString("playerName", "") ?: "") { v -> prefs.edit { putString("playerName", v.take(24)) } }
+    /**
+     * Achievements already looked at in the profile. `null` until the first
+     * launch that knows about them, so an update does not flag old ones as new.
+     */
+    var seenAchievements by pref(prefs.getStringSet("seenAchievements", null)?.toSet()) { v ->
+        prefs.edit { if (v == null) remove("seenAchievements") else putStringSet("seenAchievements", v) }
+    }
 
     private inline fun <reified E : Enum<E>> enumOf(name: String?, fallback: E): E =
         enumValues<E>().firstOrNull { it.name == name } ?: fallback

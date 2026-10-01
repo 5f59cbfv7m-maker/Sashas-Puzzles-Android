@@ -25,6 +25,8 @@ There is no system JDK on this Mac; Android Studio's bundled JBR is the one to u
 | `game/GameSession.kt` | The live game: drag, snap, undo, clock, autosave, viewport policy |
 | `game/BoardView.kt`, `TrayView.kt`, `GameScreen.kt`, `Overlays.kt` | The playing screen |
 | `app/AppModel.kt` | Navigation, saves, stats; lives in `PuzzleApp`, not the activity |
+| `persistence/PlayerStats.kt` | The solved-games history and everything derived from it, including `Achievement` |
+| `library/ProfileScreen.kt`, `game/Achievements.kt` | The profile, the medals and their reveal on the completion card |
 | `ui/Theme.kt` | The iOS design tokens, fonts and shared controls |
 | `Scripts/import-ios-strings.py` | Regenerates every `strings.xml` from the iOS `Localizable.xcstrings` |
 
@@ -70,12 +72,19 @@ system face whatever weight was asked, so `Theme.install` builds the display typ
 script. iOS plural substitutions inside one string become `<plurals name="…_argN">` plus a string argument
 (`ui/Text.kt` `substituted`). Names that are Java keywords get `_label` (`R.string.continue_label`).
 
+**Achievements are derived, never stored.** `PlayerStats.isUnlocked` reads the history; only the keys
+the player has looked at are saved (`seenAchievements`, `null` until the first launch that knows them, so
+an update does not flag old medals as new). Keys are the iOS raw values. "A week in a row" uses the longest
+streak ever, so the medal is not taken back when a streak breaks. The chime is `res/raw/achievement.wav`,
+written by `Scripts/make-achievement-tone.py` from the partials the iOS app synthesizes.
+
 **Signing.** The upload key and `keystore.properties` never enter the repository (git-ignored). Debug
 builds install on a phone over USB without any certificate and do not expire.
 
 ## Checking screens
 
 Debug builds accept a stage: `adb shell am start -n com.kirillrychkov.sashaspuzzles/.MainActivity --es stage completed`
-(`board`, `scattered`, `completed`). Screenshots: `adb exec-out screencap -p > shot.png`. Language:
+(`board`, `scattered`, `completed`, `profile`); add `--es achievements sprinter,nightmare` to make the
+completion card reveal those medals. Screenshots: `adb exec-out screencap -p > shot.png`. Language:
 `adb shell cmd locale set-app-locales com.kirillrychkov.sashaspuzzles --locales ru-RU`; dark:
 `adb shell cmd uimode night yes`.

@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.DropdownMenu
@@ -135,7 +136,7 @@ private fun LazyGridScope.full(content: @Composable () -> Unit) =
 @Composable
 private fun Header(model: AppModel) {
     val compact = LocalCompact.current
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)) {
         Box(
             Modifier.size(44.dp).clip(CircleShape).background(Theme.colors.accent),
             contentAlignment = Alignment.Center,
@@ -143,7 +144,18 @@ private fun Header(model: AppModel) {
             Icon(Icons.Rounded.Extension, null, tint = Theme.colors.onAccent, modifier = Modifier.size(24.dp))
         }
         FittedLine(stringResource(R.string.sashas_puzzles), Theme.display(if (compact) 30 else 34), Theme.colors.text, Modifier.weight(1f))
-        RoundIconButton(Icons.Rounded.Settings, stringResource(R.string.settings), size = if (compact) 40.dp else 44.dp) {
+        val chip = if (compact) 40.dp else 44.dp
+        Box {
+            RoundIconButton(Icons.Rounded.Person, stringResource(R.string.profile), size = chip) {
+                model.sheet = AppModel.Sheet.PROFILE
+            }
+            // An achievement not yet looked at in the profile.
+            if (model.unseenAchievements.isNotEmpty()) {
+                Box(Modifier.align(Alignment.TopEnd).offset(1.dp, (-1).dp).size(11.dp)
+                    .background(Theme.colors.bg, CircleShape).padding(2.dp).background(Theme.colors.accent, CircleShape))
+            }
+        }
+        RoundIconButton(Icons.Rounded.Settings, stringResource(R.string.settings), size = chip) {
             model.sheet = AppModel.Sheet.SETTINGS
         }
     }
