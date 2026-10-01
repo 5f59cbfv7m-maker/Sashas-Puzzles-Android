@@ -66,10 +66,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -77,6 +79,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.kirillrychkov.sashaspuzzles.R
 import com.kirillrychkov.sashaspuzzles.app.AppModel
 import com.kirillrychkov.sashaspuzzles.engine.Pt
+import com.kirillrychkov.sashaspuzzles.engine.Sz
 import com.kirillrychkov.sashaspuzzles.ui.ChipStyle
 import com.kirillrychkov.sashaspuzzles.ui.LocalCompact
 import com.kirillrychkov.sashaspuzzles.ui.FittedLine
@@ -110,13 +113,26 @@ fun GameScreen(model: AppModel, session: GameSession) {
             Modifier.fillMaxSize().onGloballyPositioned { gameOrigin[0] = it.positionInRoot() }
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)),
         ) {
+            val compact = LocalCompact.current
             val trailing = maxWidth > maxHeight && maxWidth >= 700.dp
             val placement = if (trailing) TrayPlacement.TRAILING else TrayPlacement.BOTTOM
-            val thickness = if (trailing) (maxWidth * 0.24f).coerceIn(220.dp, 300.dp) else (maxHeight * 0.2f).coerceIn(130.dp, 220.dp)
+            // The folded phone held sideways is wide but short: a slimmer tray
+            // leaves the board more width, and its action lives in the menu.
+            val thickness = when {
+                trailing && compact -> 168.dp
+                trailing -> (maxWidth * 0.24f).coerceIn(220.dp, 300.dp)
+                else -> (maxHeight * 0.2f).coerceIn(130.dp, 220.dp)
+            }
+            val zoomRow = compact && maxWidth > maxHeight
             val board = @Composable { modifier: Modifier ->
                 Box(modifier.onGloballyPositioned { boardBounds[0] = it.boundsInRoot() }) {
                     BoardView(model, session, Modifier.fillMaxSize())
-                    ZoomControls(session, Modifier.align(Alignment.BottomEnd).padding(if (LocalCompact.current) 14.dp else 18.dp))
+                    ZoomControls(session, compact, zoomRow, Modifier.align(Alignment.BottomEnd).padding(if (compact) 10.dp else 18.dp)
+                        .onGloballyPositioned { c ->
+                            val parent = c.parentLayoutCoordinates?.size ?: return@onGloballyPositioned
+                            val at = c.positionInParent()
+                            session.controlsLaidOut(Sz((parent.width - at.x).toDouble(), (parent.height - at.y).toDouble()))
+                        })
                 }
             }
             val onChanged: (Int, Offset) -> Unit = { piece, location ->
@@ -136,7 +152,7 @@ fun GameScreen(model: AppModel, session: GameSession) {
                 Row(Modifier.fillMaxSize()) {
                     board(Modifier.weight(1f).fillMaxHeight())
                     Box(Modifier.width(1.dp).fillMaxHeight().background(colors.hairline))
-                    TrayView(session, placement, showAction = true, onChanged, onEnded, Modifier.width(thickness).fillMaxHeight())
+                    TrayView(session, placement, showAction = !compact, onChanged, onEnded, Modifier.width(thickness).fillMaxHeight())
                 }
             } else {
                 Column(Modifier.fillMaxSize()) {
@@ -200,9 +216,11 @@ private fun Header(model: AppModel, session: GameSession, onShowOriginal: () -> 
             horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp),
         ) {
             RoundIconButton(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.back_to_library), size = 42.dp) { model.showLibrary() }
-            // The cover screen has no room for the name next to the chips; the
-            // picture itself is on the board, so the title gives way first.
-            if (width >= 400.dp) FittedLine(model.library.title(session.item), Theme.display(20), colors.text, Modifier.weight(1f))
+            // The cover screen, or large system text, leaves no room for the name
+            // next to the chips; the picture itself is on the board, so the
+            // title gives way first.
+            val fontScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
+            if (width / fontScale >= (if (compact) 400.dp else 640.dp)) FittedLine(model.library.title(session.item), Theme.display(20), colors.text, Modifier.weight(1f))
             else Box(Modifier.weight(1f))
             StatusChip(session, showBar)
             RoundIconButton(Icons.Rounded.Lightbulb, stringResource(R.string.hint), style = ChipStyle.SAGE, size = 42.dp, enabled = playing) { session.requestHint() }
@@ -288,26 +306,37 @@ private fun StatusChip(session: GameSession, showBar: Boolean) {
     }
 }
 
+/**
+ * Zoom and fit buttons. On a phone they shrink, and when the board is short
+ * they lie in a row so they never stand taller than the picture.
+ */
 @Composable
-private fun ZoomControls(session: GameSession, modifier: Modifier) {
+private fun ZoomControls(session: GameSession, compact: Boolean, row: Boolean, modifier: Modifier) {
     val colors = Theme.colors
-    Column(
-        modifier.shadow(6.dp, RoundedCornerShape(22.dp)).background(colors.card, RoundedCornerShape(22.dp)).padding(10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        ZoomButton(Icons.Rounded.Add, stringResource(R.string.zoom_in_2)) { session.zoomStep(1.25) }
-        ZoomButton(Icons.Rounded.Remove, stringResource(R.string.zoom_out_2)) { session.zoomStep(0.8) }
-        Box(Modifier.width(24.dp).height(1.dp).background(colors.track))
-        ZoomButton(Icons.Rounded.CenterFocusStrong, stringResource(R.string.fit_board_2)) { session.fitBoard() }
-        ZoomButton(Icons.Rounded.ZoomOutMap, stringResource(R.string.fit_table_2)) { session.fitTable() }
+    val radius = if (compact) 19.dp else 22.dp
+    val button = if (compact) 34.dp else 38.dp
+    val buttons = @Composable {
+        ZoomButton(Icons.Rounded.Add, stringResource(R.string.zoom_in_2), button) { session.zoomStep(1.25) }
+        ZoomButton(Icons.Rounded.Remove, stringResource(R.string.zoom_out_2), button) { session.zoomStep(0.8) }
+        if (row) Box(Modifier.width(1.dp).height(20.dp).background(colors.track))
+        else Box(Modifier.width(if (compact) 20.dp else 24.dp).height(1.dp).background(colors.track))
+        ZoomButton(Icons.Rounded.CenterFocusStrong, stringResource(R.string.fit_board_2), button) { session.fitBoard() }
+        ZoomButton(Icons.Rounded.ZoomOutMap, stringResource(R.string.fit_table_2), button) { session.fitTable() }
+    }
+    val panel = modifier.shadow(6.dp, RoundedCornerShape(radius)).background(colors.card, RoundedCornerShape(radius))
+        .padding(if (compact) 4.dp else 10.dp)
+    val gap = if (compact) 2.dp else 6.dp
+    if (row) {
+        Row(panel, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(gap)) { buttons() }
+    } else {
+        Column(panel, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(gap)) { buttons() }
     }
 }
 
 @Composable
-private fun ZoomButton(icon: ImageVector, label: String, onClick: () -> Unit) {
-    Box(Modifier.size(38.dp).clip(CircleShape).pressable(onClick = onClick), contentAlignment = Alignment.Center) {
-        Icon(icon, label, tint = Theme.colors.text, modifier = Modifier.size(20.dp))
+private fun ZoomButton(icon: ImageVector, label: String, size: Dp, onClick: () -> Unit) {
+    Box(Modifier.size(size).clip(CircleShape).pressable(onClick = onClick), contentAlignment = Alignment.Center) {
+        Icon(icon, label, tint = Theme.colors.text, modifier = Modifier.size(if (size < 38.dp) 18.dp else 20.dp))
     }
 }
 

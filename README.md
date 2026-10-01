@@ -26,11 +26,15 @@ You need a Mac, Windows or Linux computer with [Android Studio](https://develope
 2. To play on your phone: turn on **Developer options** (Settings → About phone → Software information → tap
    *Build number* seven times), then **USB debugging** in Developer options, plug the phone in and press **Run**.
    A build installed this way does not expire.
+3. To update without the cable: turn on **Wireless debugging** in Developer options, tap *Pair device with
+   pairing code* and run `adb pair <IP:port shown>` with the code. From then on `Scripts/install-on-phone.sh`
+   finds the phone over Wi-Fi whenever wireless debugging is on.
 
 From a terminal:
 
 ```bash
 ./gradlew :app:installDebug      # build and install on the connected phone or emulator
+Scripts/install-on-phone.sh       # build and install on the phone, over the cable or Wi-Fi
 ./gradlew :app:testDebugUnitTest  # engine tests
 ./gradlew :app:bundleRelease      # the .aab for Google Play
 ```

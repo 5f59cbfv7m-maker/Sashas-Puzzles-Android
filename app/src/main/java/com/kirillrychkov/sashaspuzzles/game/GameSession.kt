@@ -31,6 +31,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.UUID
 import kotlin.math.abs
+import kotlin.math.min
 import kotlin.random.Random
 
 /**
@@ -116,6 +117,9 @@ class GameSession(
     var density = 2.0
         private set
     private var fittedSize = Sz(0.0, 0.0)
+    /** The zoom buttons' corner, measured from the board's bottom-right edges, in pixels. */
+    private var controls = Sz(0.0, 0.0)
+    private var fittedViewport: Viewport? = null
     private var textureRefresh: Job? = null
     private var refit: Job? = null
     private var showOutlines = true
@@ -525,9 +529,34 @@ class GameSession(
         }
     }
 
+    /** The zoom buttons report their corner; a board still sitting where it was fitted is re-fitted around them. */
+    fun controlsLaidOut(size: Sz) {
+        if (size == controls) return
+        controls = size
+        if (fittedViewport != null && viewport == fittedViewport) fitBoard()
+    }
+
+    /**
+     * Fits the picture to the board, clear of the zoom buttons: when they would
+     * cover a corner, the picture moves out of their column or above their
+     * row, whichever leaves it larger.
+     */
     fun fitBoard() {
         if (viewSize.width <= 1) return
-        viewport = Viewport.fitting(boardRect, viewSize, 40 * density, minScale, maxScale)
+        // A phone-sized board can't spare 40dp on each side; the picture gets it instead.
+        val roomy = min(viewSize.width, viewSize.height) / density >= 480
+        val padding = (if (roomy) 40 else 12) * density
+        val whole = Rect(0.0, 0.0, viewSize.width, viewSize.height)
+        var fit = Viewport.fitting(boardRect, whole, padding, minScale, maxScale)
+        val frame = fit.screen(boardRect)
+        val gap = 6 * density
+        if (controls.width > 0 && frame.maxX > viewSize.width - controls.width - gap && frame.maxY > viewSize.height - controls.height - gap) {
+            val beside = Viewport.fitting(boardRect, Rect(0.0, 0.0, viewSize.width - controls.width, viewSize.height), padding, minScale, maxScale)
+            val above = Viewport.fitting(boardRect, Rect(0.0, 0.0, viewSize.width, viewSize.height - controls.height), padding, minScale, maxScale)
+            fit = if (beside.scale >= above.scale) beside else above
+        }
+        viewport = fit
+        fittedViewport = fit
         fittedSize = viewSize
         scheduleTextureRefresh()
     }

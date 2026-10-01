@@ -5,6 +5,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -57,6 +62,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kirillrychkov.sashaspuzzles.R
@@ -91,8 +97,10 @@ fun HomeScreen(model: AppModel) {
     val insets = WindowInsets.safeDrawing.asPaddingValues()
     LaunchedEffect(Unit) { model.refreshSaves() }
 
+    // Large system text needs wider cards, so the grid takes fewer columns.
+    val fontScale = LocalDensity.current.fontScale.coerceIn(1f, 1.6f)
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(200.dp),
+        columns = GridCells.Adaptive(200.dp * fontScale),
         modifier = Modifier.fillMaxSize().background(Theme.colors.bg),
         contentPadding = PaddingValues(
             start = gutter + insets.calculateLeftPadding(androidx.compose.ui.unit.LayoutDirection.Ltr),
@@ -108,13 +116,9 @@ fun HomeScreen(model: AppModel) {
         if (model.resumable.isNotEmpty()) full { ContinueSection(model) }
         full { CategoryBar(model, category) { categoryKey = it?.key } }
         full {
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(category?.let { stringResource(it.title) } ?: stringResource(R.string.all_pictures),
-                    style = Theme.display(22), color = Theme.colors.text)
-                val solved = items.count { model.stats.bestTime(it.id) != null }
-                Text(stringResource(R.string.x_of_x_solved, solved, items.size), style = Theme.body(14), color = Theme.colors.faint,
-                    modifier = Modifier.padding(bottom = 3.dp))
-            }
+            val solved = items.count { model.stats.bestTime(it.id) != null }
+            SectionTitle(category?.let { stringResource(it.title) } ?: stringResource(R.string.all_pictures),
+                stringResource(R.string.x_of_x_solved, solved, items.size))
         }
         items(items, key = { it.id }) { item ->
             PictureCard(model, item,
@@ -212,8 +216,17 @@ private fun DailyCard(model: AppModel) {
         } else {
             Row(Modifier.padding(22.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                 thumbnail(Modifier.width(216.dp))
-                copy(Modifier.weight(1f))
-                button(Modifier)
+                // With large system text the button moves under the title,
+                // leaving the name the card's whole width.
+                if (LocalDensity.current.fontScale > 1.15f) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        copy(Modifier)
+                        button(Modifier)
+                    }
+                } else {
+                    copy(Modifier.weight(1f))
+                    button(Modifier)
+                }
             }
         }
     }
@@ -222,24 +235,40 @@ private fun DailyCard(model: AppModel) {
 @Composable
 private fun ContinueSection(model: AppModel) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(stringResource(R.string.continue_label), style = Theme.display(22), color = Theme.colors.text)
-            Text(pluralStringResource(R.plurals.x_saved_games, model.resumable.size, model.resumable.size),
-                style = Theme.body(14), color = Theme.colors.faint, modifier = Modifier.padding(bottom = 3.dp))
-        }
-        Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            for (snapshot in model.resumable) ResumeCard(model, snapshot)
+        SectionTitle(stringResource(R.string.continue_label),
+            pluralStringResource(R.plurals.x_saved_games, model.resumable.size, model.resumable.size))
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            // On a phone the card takes the screen's width (less a peek at the
+            // next one), so large text wraps instead of being cut off.
+            val width = when {
+                !LocalCompact.current -> null
+                model.resumable.size == 1 -> maxWidth
+                else -> maxWidth - 36.dp
+            }
+            Row(Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                for (snapshot in model.resumable) ResumeCard(model, snapshot, width)
+            }
         }
     }
 }
 
+/** A section's name with its count beside it, or under it when large text leaves no room. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ResumeCard(model: AppModel, snapshot: GameSnapshot) {
+private fun SectionTitle(title: String, detail: String) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(title, Modifier.alignByBaseline(), style = Theme.display(22), color = Theme.colors.text)
+        Text(detail, Modifier.alignByBaseline(), style = Theme.body(14), color = Theme.colors.faint)
+    }
+}
+
+@Composable
+private fun ResumeCard(model: AppModel, snapshot: GameSnapshot, width: Dp?) {
     val colors = Theme.colors
     var menu by remember { mutableStateOf(false) }
     Box {
         Row(
-            Modifier
+            (if (width != null) Modifier.width(width) else Modifier)
                 .card(colors.card)
                 .combinedClickable(onLongClick = { menu = true }) { model.resume(snapshot) }
                 .padding(12.dp),
@@ -247,10 +276,12 @@ private fun ResumeCard(model: AppModel, snapshot: GameSnapshot) {
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             LibraryThumbnail(model, snapshot.libraryItem, Modifier.size(96.dp, 68.dp).clip(RoundedCornerShape(16.dp)), longSide = 220, washed = true)
-            Column(Modifier.width(150.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                OneLine(model.library.title(snapshot.libraryItem), Theme.body(17, FontWeight.Bold), colors.text)
-                OneLine(substituted(R.string.x_pieces_x, snapshot.pieceCount, TimeFormatting.clock(snapshot.elapsedMillis),
-                    plural = mapOf(1 to R.plurals.x_pieces_x_arg1)), Theme.body(13), colors.muted)
+            Column(if (width != null) Modifier.weight(1f) else Modifier.width(150.dp * LocalDensity.current.fontScale.coerceIn(1f, 1.6f)), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(model.library.title(snapshot.libraryItem), style = Theme.body(17, FontWeight.Bold), color = colors.text,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(substituted(R.string.x_pieces_x, snapshot.pieceCount, TimeFormatting.clock(snapshot.elapsedMillis),
+                    plural = mapOf(1 to R.plurals.x_pieces_x_arg1)), style = Theme.body(13), color = colors.muted,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
                 ProgressBar(snapshot.state.placedCount.toFloat() / maxOf(1, snapshot.pieceCount), Modifier.fillMaxWidth().padding(top = 7.dp))
             }
             Box(Modifier.size(44.dp).clip(CircleShape).background(colors.accent), contentAlignment = Alignment.Center) {
@@ -309,7 +340,9 @@ private fun PictureCard(model: AppModel, item: LibraryItem, solved: Long?, inPro
         Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             OneLine(model.library.title(item), Theme.body(17, FontWeight.Bold), colors.text)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(item.category.title), style = Theme.body(13), color = colors.muted, maxLines = 1)
+                // The category gives way first, so the solved status is always readable.
+                Text(stringResource(item.category.title), Modifier.weight(1f, fill = false), style = Theme.body(13), color = colors.muted,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Box(Modifier.size(4.dp).clip(CircleShape).background(colors.track))
                 Text(solved?.let { TimeFormatting.clock(it) } ?: stringResource(R.string.not_solved),
                     style = Theme.body(13), color = colors.muted, maxLines = 1)

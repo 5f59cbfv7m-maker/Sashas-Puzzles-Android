@@ -47,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kirillrychkov.sashaspuzzles.R
+import com.kirillrychkov.sashaspuzzles.ui.LocalCompact
 import com.kirillrychkov.sashaspuzzles.ui.PillButton
 import com.kirillrychkov.sashaspuzzles.ui.PillStyle
 import com.kirillrychkov.sashaspuzzles.ui.Theme
@@ -77,7 +78,7 @@ fun TrayView(
 ) {
     val colors = Theme.colors
     val trailing = placement == TrayPlacement.TRAILING
-    val cellSize = if (trailing) 74.dp else 63.dp
+    val cellSize = if (trailing && !LocalCompact.current) 74.dp else 63.dp
     val pieces = session.trayPieces
     session.textures.revision // re-read bitmaps as they land
 

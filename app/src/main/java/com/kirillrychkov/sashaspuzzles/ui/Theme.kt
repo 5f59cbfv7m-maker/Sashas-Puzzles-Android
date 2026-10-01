@@ -93,7 +93,7 @@ data class Palette(
 }
 
 val LocalPalette = staticCompositionLocalOf { Palette.light }
-/** Phone-width layouts: the Fold's cover screen and ordinary phones. */
+/** Phone-sized layouts: the Fold's cover screen and ordinary phones, held either way. */
 val LocalCompact = staticCompositionLocalOf { true }
 
 object Theme {
@@ -150,7 +150,7 @@ fun PuzzleTheme(dark: Boolean, content: @Composable () -> Unit) {
     BoxWithConstraints {
         CompositionLocalProvider(
             LocalPalette provides if (dark) Palette.dark else Palette.light,
-            LocalCompact provides (maxWidth < 600.dp),
+            LocalCompact provides (maxWidth < 600.dp || maxHeight < 480.dp),
         ) { content() }
     }
 }
@@ -240,7 +240,8 @@ fun PillButton(
             Icon(icon, null, tint = foreground, modifier = Modifier.size((size * 1.05).dp))
             Box(Modifier.width(8.dp))
         }
-        Text(title, style = textStyle, color = foreground.copy(alpha = if (enabled) 1f else 0.45f), maxLines = 1, softWrap = false)
+        // Large system text in a narrow pill shrinks a little before it truncates.
+        FittedLine(title, textStyle, foreground.copy(alpha = if (enabled) 1f else 0.45f), Modifier.weight(1f, fill = false), minScale = 0.65f)
     }
 }
 

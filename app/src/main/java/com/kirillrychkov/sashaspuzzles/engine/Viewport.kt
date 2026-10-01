@@ -42,12 +42,16 @@ data class Viewport(val scale: Double = 1.0, val offsetX: Double = 0.0, val offs
 
     companion object {
         /** Fits `content` inside `view` with a margin, centred. */
-        fun fitting(content: Rect, view: Sz, padding: Double, minimumScale: Double, maximumScale: Double): Viewport {
-            if (content.width <= 0 || content.height <= 0 || view.width <= 0 || view.height <= 0) return Viewport()
-            val w = max(1.0, view.width - padding * 2)
-            val h = max(1.0, view.height - padding * 2)
+        fun fitting(content: Rect, view: Sz, padding: Double, minimumScale: Double, maximumScale: Double): Viewport =
+            fitting(content, Rect(0.0, 0.0, view.width, view.height), padding, minimumScale, maximumScale)
+
+        /** Fits `content` inside `area`, a part of the view, with a margin, centred in it. */
+        fun fitting(content: Rect, area: Rect, padding: Double, minimumScale: Double, maximumScale: Double): Viewport {
+            if (content.width <= 0 || content.height <= 0 || area.width <= 0 || area.height <= 0) return Viewport()
+            val w = max(1.0, area.width - padding * 2)
+            val h = max(1.0, area.height - padding * 2)
             val scale = clamp(min(w / content.width, h / content.height), minimumScale, maximumScale)
-            return Viewport(scale, view.width / 2 - content.midX * scale, view.height / 2 - content.midY * scale)
+            return Viewport(scale, area.midX - content.midX * scale, area.midY - content.midY * scale)
         }
     }
 }
