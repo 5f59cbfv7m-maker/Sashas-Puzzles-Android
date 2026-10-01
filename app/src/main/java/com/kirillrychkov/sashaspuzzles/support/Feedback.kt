@@ -5,6 +5,7 @@ import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.SoundPool
 import android.os.Build
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -17,6 +18,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.cos
 
 /**
  * Haptic and audio confirmation for snaps, merges and completion, plus the
@@ -114,15 +117,31 @@ class Feedback(private val context: Context) {
         }
         tracks[target]?.let { if (!it.isPlaying) runCatching { it.start() } }
         fade?.cancel()
+        // A true crossfade (something already playing) lets the outgoing tune
+        // start thinning a moment before the new one rises. On the S-curves
+        // below the two are never both above half volume — two keys and
+        // tempos at full strength together clash — and the sum dips only about
+        // 4 dB: a breath, not a gap.
+        val handover = tracks.any { (music, _) -> music != target && (volumes[music] ?: 0f) > 0.01f }
+        val start = HashMap(volumes)
         fade = scope.launch {
-            val steps = 20
-            val start = HashMap(volumes)
-            for (step in 1..steps) {
-                delay(CROSSFADE_MILLIS / steps)
-                val t = step.toFloat() / steps
+            val began = SystemClock.uptimeMillis()
+            var done = false
+            while (!done) {
+                delay(FRAME_MILLIS)
+                val elapsed = SystemClock.uptimeMillis() - began
+                done = true
                 for ((music, player) in tracks) {
-                    val goal = if (music == target) MUSIC_VOLUME else 0f
-                    val v = (start[music] ?: 0f) + (goal - (start[music] ?: 0f)) * t
+                    val from = start[music] ?: 0f
+                    val rising = music == target
+                    val (delayMillis, length) = when {
+                        !rising -> 0L to FADE_OUT_MILLIS
+                        handover -> ENTRY_DELAY_MILLIS to FADE_IN_MILLIS
+                        else -> 0L to FADE_IN_MILLIS
+                    }
+                    val t = ((elapsed - delayMillis).toFloat() / length).coerceIn(0f, 1f)
+                    if (t < 1f) done = false
+                    val v = loudness(from, if (rising) MUSIC_VOLUME else 0f, t)
                     volumes[music] = v
                     runCatching { player.setVolume(v, v) }
                 }
@@ -131,8 +150,21 @@ class Feedback(private val context: Context) {
         }
     }
 
+    /**
+     * The volume `t` of the way from `from` to `to`, along an S-curve: it
+     * starts and settles gently, with no audible step at either end.
+     */
+    private fun loudness(from: Float, to: Float, t: Float): Float =
+        from + (to - from) * (1 - cos(PI * t).toFloat()) / 2
+
     private companion object {
         const val MUSIC_VOLUME = 0.35f
-        const val CROSSFADE_MILLIS = 2000L
+        /** The outgoing tune thins out over this… */
+        const val FADE_OUT_MILLIS = 3000L
+        /** …while the incoming one waits this long, then rises more slowly. */
+        const val ENTRY_DELAY_MILLIS = 150L
+        const val FADE_IN_MILLIS = 3200L
+        /** About one display frame: volume steps this small are inaudible. */
+        const val FRAME_MILLIS = 16L
     }
 }
