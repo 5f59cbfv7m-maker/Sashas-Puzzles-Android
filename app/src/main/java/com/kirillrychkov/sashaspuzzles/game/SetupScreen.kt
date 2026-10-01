@@ -44,6 +44,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.sp
+import com.kirillrychkov.sashaspuzzles.ui.FittedLine
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.res.pluralStringResource
@@ -111,10 +116,12 @@ fun SetupScreen(model: AppModel, item: LibraryItem) {
                 Text(stringResource(R.string.original_keeps_the_whole_picture_the_other_optio), style = Theme.body(13), color = colors.muted)
             }
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Kicker(stringResource(R.string.difficulty), Modifier.weight(1f))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Shrinks rather than breaking mid-word beside the switch on a narrow screen.
+                    FittedLine(stringResource(R.string.difficulty).uppercase(), Theme.body(12, FontWeight.Bold).copy(letterSpacing = 1.2.sp),
+                        colors.muted, Modifier.weight(1f), minScale = 0.6f)
                     Text(stringResource(R.string.custom), style = Theme.body(13), color = colors.muted)
-                    Switch(custom, { custom = it }, Modifier.padding(start = 8.dp), colors = switchColors())
+                    Switch(custom, { custom = it }, colors = switchColors())
                 }
                 if (custom) {
                     Column(
@@ -208,13 +215,35 @@ private fun DifficultyRow(difficulty: Difficulty, aspect: Double, selected: Bool
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(11.dp),
     ) {
-        Box(Modifier.size(30.dp).clip(CircleShape).background(if (selected) colors.onAccent else colors.sageTint), contentAlignment = Alignment.Center) {
-            Text("${difficulty.targetPieces}", style = Theme.body(12, FontWeight.Bold), color = if (selected) colors.accent else colors.onSageTint, maxLines = 1)
+        // Sized for the widest count at the current text size: large system text
+        // cut "300" to "30" in a fixed circle. Every row gets the same badge, so the names line up.
+        val badgeStyle = Theme.body(12, FontWeight.Bold)
+        val measurer = rememberTextMeasurer()
+        val density = LocalDensity.current
+        val widest = Difficulty.entries.maxOf { it.targetPieces }.toString()
+        val (badgeWidth, badgeHeight) = with(density) {
+            val size = measurer.measure(widest, badgeStyle, maxLines = 1).size
+            maxOf(30.dp, size.width.toDp() + 10.dp) to maxOf(30.dp, size.height.toDp() + 8.dp)
         }
-        Text(stringResource(difficulty.title), style = Theme.body(15, FontWeight.Bold), color = if (selected) colors.onAccent else colors.text,
-            modifier = Modifier.weight(1f), maxLines = 1)
-        OneLine(stringResource(R.string.x_x_x, columns, rows, stringResource(difficulty.estimate)), Theme.body(12),
-            if (selected) colors.onAccent.copy(alpha = 0.85f) else colors.faint)
+        Box(Modifier.size(badgeWidth, badgeHeight).clip(CircleShape).background(if (selected) colors.onAccent else colors.sageTint), contentAlignment = Alignment.Center) {
+            Text("${difficulty.targetPieces}", style = badgeStyle, color = if (selected) colors.accent else colors.onSageTint, maxLines = 1, softWrap = false)
+        }
+        val name = @Composable { modifier: Modifier ->
+            Text(stringResource(difficulty.title), style = Theme.body(15, FontWeight.Bold), color = if (selected) colors.onAccent else colors.text,
+                modifier = modifier, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        val details = stringResource(R.string.x_x_x, columns, rows, stringResource(difficulty.estimate))
+        val detailsColor = if (selected) colors.onAccent.copy(alpha = 0.85f) else colors.faint
+        if (LocalCompact.current) {
+            // A phone-wide row cannot hold the name beside the grid and the time: they go under it.
+            Column(Modifier.weight(1f)) {
+                name(Modifier)
+                OneLine(details, Theme.body(12), detailsColor)
+            }
+        } else {
+            name(Modifier.weight(1f))
+            OneLine(details, Theme.body(12), detailsColor)
+        }
     }
 }
 
