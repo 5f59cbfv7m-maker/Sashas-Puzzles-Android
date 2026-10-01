@@ -48,8 +48,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kirillrychkov.sashaspuzzles.R
 import com.kirillrychkov.sashaspuzzles.ui.LocalCompact
-import com.kirillrychkov.sashaspuzzles.ui.PillButton
-import com.kirillrychkov.sashaspuzzles.ui.PillStyle
+import com.kirillrychkov.sashaspuzzles.ui.FittedLine
 import com.kirillrychkov.sashaspuzzles.ui.Theme
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -71,28 +70,45 @@ class TrayDrag {
 fun TrayView(
     session: GameSession,
     placement: TrayPlacement,
-    showAction: Boolean,
     onChanged: (Int, Offset) -> Unit,
     onEnded: (Int, Offset) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = Theme.colors
     val trailing = placement == TrayPlacement.TRAILING
-    val cellSize = if (trailing && !LocalCompact.current) 74.dp else 63.dp
+    val compact = LocalCompact.current
+    // Beside the board the pieces stand in one column, larger, so the board
+    // keeps the width; under it they run in rows.
+    val cellSize = when {
+        trailing && compact -> 80.dp
+        trailing -> 100.dp
+        else -> 63.dp
+    }
     val pieces = session.trayPieces
     session.textures.revision // re-read bitmaps as they land
 
     Column(modifier.background(colors.surface)) {
         Row(
             Modifier.fillMaxWidth().padding(
-                start = if (trailing) 20.dp else 16.dp, end = if (trailing) 20.dp else 16.dp,
-                top = if (trailing) 18.dp else 12.dp, bottom = if (trailing) 12.dp else 10.dp,
+                start = if (trailing) 12.dp else 16.dp, end = if (trailing) 12.dp else 16.dp,
+                top = if (trailing) 16.dp else 12.dp, bottom = if (trailing) 12.dp else 10.dp,
             ),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(stringResource(R.string.pieces), style = Theme.display(if (trailing) 19 else 17), color = colors.text, modifier = Modifier.weight(1f))
-            Text("${pieces.size}", style = Theme.body(14, FontWeight.Bold), color = colors.muted,
-                modifier = Modifier.background(colors.card, CircleShape).padding(horizontal = 12.dp, vertical = 4.dp))
+            if (trailing && compact) {
+                // The narrow column on the cover screen has no room for the word: a piece and the count.
+                val label = stringResource(R.string.pieces)
+                Row(Modifier.weight(1f).semantics(mergeDescendants = true) { contentDescription = "$label: ${pieces.size}" },
+                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.Extension, null, tint = colors.muted, modifier = Modifier.size(18.dp))
+                    Text("${pieces.size}", style = Theme.body(15, FontWeight.Bold), color = colors.text, maxLines = 1)
+                }
+            } else {
+                FittedLine(stringResource(R.string.pieces), Theme.display(17), colors.text, Modifier.weight(1f), minScale = 0.6f)
+                Text("${pieces.size}", style = Theme.body(14, FontWeight.Bold), color = colors.muted, maxLines = 1,
+                    modifier = Modifier.background(colors.card, CircleShape).padding(horizontal = if (trailing) 9.dp else 12.dp, vertical = 4.dp))
+            }
         }
         Box(Modifier.weight(1f)) {
             if (pieces.isEmpty()) {
@@ -105,9 +121,8 @@ fun TrayView(
                 }
             } else if (trailing) {
                 LazyVerticalGrid(
-                    GridCells.Adaptive(cellSize),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    GridCells.Fixed(1),
+                    contentPadding = PaddingValues(start = TRAY_INSET, end = TRAY_INSET, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     items(pieces, key = { it }) { piece -> TrayCell(session, piece, cellSize, scrollsVertically = true, onChanged, onEnded) }
@@ -123,17 +138,14 @@ fun TrayView(
                 }
             }
         }
-        if (showAction && trailing) {
-            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
-            val action = session.trayAction
-            PillButton(
-                stringResource(if (action == GameSession.TrayAction.GATHER) R.string.gather_from_the_table else R.string.scatter_on_the_table),
-                Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 20.dp),
-                style = PillStyle.SECONDARY, size = 16, expand = true, enabled = action != null,
-            ) { session.performTrayAction() }
-        }
     }
 }
+
+/** Space either side of the single column of pieces. */
+private val TRAY_INSET = 16.dp
+
+/** How wide the tray beside the board is: one cell and its insets. */
+fun trailingTrayWidth(compact: Boolean) = (if (compact) 80.dp else 100.dp) + TRAY_INSET * 2
 
 /**
  * One piece in the tray. Every piece is drawn at one scale, with its cell body —

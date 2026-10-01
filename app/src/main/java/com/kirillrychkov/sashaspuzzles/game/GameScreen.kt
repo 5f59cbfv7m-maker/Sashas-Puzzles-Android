@@ -116,18 +116,13 @@ fun GameScreen(model: AppModel, session: GameSession) {
             val compact = LocalCompact.current
             val trailing = maxWidth > maxHeight && maxWidth >= 700.dp
             val placement = if (trailing) TrayPlacement.TRAILING else TrayPlacement.BOTTOM
-            // The folded phone held sideways is wide but short: a slimmer tray
-            // leaves the board more width, and its action lives in the menu.
-            val thickness = when {
-                trailing && compact -> 168.dp
-                trailing -> (maxWidth * 0.24f).coerceIn(220.dp, 300.dp)
-                else -> (maxHeight * 0.2f).coerceIn(130.dp, 220.dp)
-            }
-            val zoomRow = compact && maxWidth > maxHeight
+            // Beside the board the tray is one column of pieces, so the board
+            // keeps the width; scatter and gather live in the header.
+            val thickness = if (trailing) trailingTrayWidth(compact) else (maxHeight * 0.2f).coerceIn(130.dp, 220.dp)
             val board = @Composable { modifier: Modifier ->
                 Box(modifier.onGloballyPositioned { boardBounds[0] = it.boundsInRoot() }) {
                     BoardView(model, session, Modifier.fillMaxSize())
-                    ZoomControls(session, compact, zoomRow, Modifier.align(Alignment.BottomEnd).padding(if (compact) 10.dp else 18.dp)
+                    ZoomControls(session, compact, Modifier.align(Alignment.BottomEnd).padding(if (compact) 10.dp else 18.dp)
                         .onGloballyPositioned { c ->
                             val parent = c.parentLayoutCoordinates?.size ?: return@onGloballyPositioned
                             val at = c.positionInParent()
@@ -152,13 +147,13 @@ fun GameScreen(model: AppModel, session: GameSession) {
                 Row(Modifier.fillMaxSize()) {
                     board(Modifier.weight(1f).fillMaxHeight())
                     Box(Modifier.width(1.dp).fillMaxHeight().background(colors.hairline))
-                    TrayView(session, placement, showAction = !compact, onChanged, onEnded, Modifier.width(thickness).fillMaxHeight())
+                    TrayView(session, placement, onChanged, onEnded, Modifier.width(thickness).fillMaxHeight())
                 }
             } else {
                 Column(Modifier.fillMaxSize()) {
                     board(Modifier.weight(1f).fillMaxWidth())
                     Box(Modifier.fillMaxWidth().height(1.dp).background(colors.hairline))
-                    TrayView(session, placement, showAction = false, onChanged, onEnded, Modifier.height(thickness).fillMaxWidth())
+                    TrayView(session, placement, onChanged, onEnded, Modifier.height(thickness).fillMaxWidth())
                 }
             }
             Overlays(model, session)
@@ -310,26 +305,22 @@ private fun StatusChip(session: GameSession, showBar: Boolean) {
  * Zoom and fit buttons. On a phone they shrink, and when the board is short
  * they lie in a row so they never stand taller than the picture.
  */
+/** Zoom and fit, as one low row in the board's corner: a column took a strip of the board's height. */
 @Composable
-private fun ZoomControls(session: GameSession, compact: Boolean, row: Boolean, modifier: Modifier) {
+private fun ZoomControls(session: GameSession, compact: Boolean, modifier: Modifier) {
     val colors = Theme.colors
     val radius = if (compact) 19.dp else 22.dp
     val button = if (compact) 34.dp else 38.dp
-    val buttons = @Composable {
+    Row(
+        modifier.shadow(6.dp, RoundedCornerShape(radius)).background(colors.card, RoundedCornerShape(radius)).padding(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp),
+    ) {
         ZoomButton(Icons.Rounded.Add, stringResource(R.string.zoom_in_2), button) { session.zoomStep(1.25) }
         ZoomButton(Icons.Rounded.Remove, stringResource(R.string.zoom_out_2), button) { session.zoomStep(0.8) }
-        if (row) Box(Modifier.width(1.dp).height(20.dp).background(colors.track))
-        else Box(Modifier.width(if (compact) 20.dp else 24.dp).height(1.dp).background(colors.track))
+        Box(Modifier.width(1.dp).height(20.dp).background(colors.track))
         ZoomButton(Icons.Rounded.CenterFocusStrong, stringResource(R.string.fit_board_2), button) { session.fitBoard() }
         ZoomButton(Icons.Rounded.ZoomOutMap, stringResource(R.string.fit_table_2), button) { session.fitTable() }
-    }
-    val panel = modifier.shadow(6.dp, RoundedCornerShape(radius)).background(colors.card, RoundedCornerShape(radius))
-        .padding(if (compact) 4.dp else 10.dp)
-    val gap = if (compact) 2.dp else 6.dp
-    if (row) {
-        Row(panel, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(gap)) { buttons() }
-    } else {
-        Column(panel, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(gap)) { buttons() }
     }
 }
 

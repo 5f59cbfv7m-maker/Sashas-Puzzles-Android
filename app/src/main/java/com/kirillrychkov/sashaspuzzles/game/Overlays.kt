@@ -159,6 +159,7 @@ fun ErrorOverlay(onDismiss: () -> Unit) {
 fun PauseOverlay(model: AppModel, session: GameSession) {
     val colors = Theme.colors
     val short = isShort()
+    val narrow = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp < 400
     Box(Modifier.fillMaxSize()) {
         Backdrop()
         FittedCard {
@@ -174,9 +175,17 @@ fun PauseOverlay(model: AppModel, session: GameSession) {
                 Text(stringResource(R.string.the_table_is_saved_come_back_whenever_you_like), style = Theme.body(15), color = colors.muted, textAlign = TextAlign.Center)
                 Text(TimeFormatting.clock(session.elapsedMillis), style = Theme.display(if (short) 34 else 44), color = colors.text,
                     modifier = Modifier.padding(top = if (short) 8.dp else 14.dp))
-                Row(Modifier.fillMaxWidth().padding(top = if (short) 16.dp else 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PillButton(stringResource(R.string.resume), Modifier.weight(1f), icon = Icons.Rounded.PlayArrow, expand = true) { session.resume() }
-                    PillButton(stringResource(R.string.library), style = PillStyle.SECONDARY) { model.showLibrary() }
+                // A narrow screen with large text cannot fit both side by side: "Resume" shrank to a dot.
+                if (narrow && !short) {
+                    Column(Modifier.fillMaxWidth().padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        PillButton(stringResource(R.string.resume), icon = Icons.Rounded.PlayArrow, expand = true) { session.resume() }
+                        PillButton(stringResource(R.string.library), style = PillStyle.SECONDARY, expand = true) { model.showLibrary() }
+                    }
+                } else {
+                    Row(Modifier.fillMaxWidth().padding(top = if (short) 16.dp else 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        PillButton(stringResource(R.string.resume), Modifier.weight(1f), icon = Icons.Rounded.PlayArrow, expand = true) { session.resume() }
+                        PillButton(stringResource(R.string.library), style = PillStyle.SECONDARY) { model.showLibrary() }
+                    }
                 }
             }
         }
