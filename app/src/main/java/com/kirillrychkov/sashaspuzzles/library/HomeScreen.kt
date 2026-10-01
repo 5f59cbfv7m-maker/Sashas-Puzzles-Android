@@ -1,6 +1,15 @@
 package com.kirillrychkov.sashaspuzzles.library
 
 import androidx.compose.foundation.Canvas
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.rounded.AddPhotoAlternate
+import androidx.compose.material.icons.rounded.CreateNewFolder
+import androidx.compose.material.icons.rounded.Downloading
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -98,6 +107,17 @@ fun HomeScreen(model: AppModel) {
     val insets = WindowInsets.safeDrawing.asPaddingValues()
     LaunchedEffect(Unit) { model.refreshSaves() }
 
+    // The system photo picker needs no permission; the document picker reaches Drive and downloads.
+    val showMine = { categoryKey = ArtCategory.MINE.key }
+    val pickPhotos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(20)) { uris ->
+        model.importPhotos(uris, fromFiles = false, onImported = showMine)
+    }
+    val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        model.importPhotos(uris, fromFiles = true, onImported = showMine)
+    }
+    val addPhoto = { pickPhotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+    val addFiles = { pickFiles.launch(arrayOf("image/*")) }
+
     // Large system text needs wider cards, so the grid takes fewer columns.
     val fontScale = LocalDensity.current.fontScale.coerceIn(1f, 1.6f)
     LazyVerticalGrid(
@@ -112,7 +132,7 @@ fun HomeScreen(model: AppModel) {
         horizontalArrangement = Arrangement.spacedBy(18.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        full { Header(model) }
+        full { Header(model, addPhoto, addFiles) }
         full { DailyCard(model) }
         if (model.resumable.isNotEmpty()) full { ContinueSection(model) }
         full { CategoryBar(model, category) { categoryKey = it?.key } }
@@ -121,6 +141,7 @@ fun HomeScreen(model: AppModel) {
             SectionTitle(category?.let { stringResource(it.title) } ?: stringResource(R.string.all_pictures),
                 stringResource(R.string.x_of_x_solved, solved, items.size))
         }
+        if (category == ArtCategory.MINE && items.isEmpty()) full { NoPhotos(addPhoto) }
         items(items, key = { it.id }) { item ->
             PictureCard(model, item,
                 solved = model.stats.bestTime(item.id),
@@ -128,23 +149,63 @@ fun HomeScreen(model: AppModel) {
             ) { model.openSetup(item) }
         }
     }
+
+    // A solid status bar: pictures scrolling under the clock made it unreadable.
+    Box(Modifier.fillMaxWidth().height(insets.calculateTopPadding()).background(Theme.colors.bg))
+
+    // Over the grid: the copy in progress, and a picture that could not be read.
+    Box(Modifier.fillMaxSize().padding(bottom = insets.calculateBottomPadding() + 20.dp), contentAlignment = Alignment.BottomCenter) {
+        if (model.importing) {
+            Row(Modifier.shadow(8.dp, CircleShape).background(Theme.colors.card, CircleShape).padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Rounded.Downloading, null, tint = Theme.colors.text, modifier = Modifier.size(18.dp))
+                Text(stringResource(R.string.importing), style = Theme.body(14, FontWeight.Bold), color = Theme.colors.text)
+            }
+        }
+    }
+    if (model.importFailed) {
+        AlertDialog(
+            onDismissRequest = { model.importFailed = false },
+            confirmButton = { TextButton({ model.importFailed = false }) { Text(stringResource(R.string.ok), color = Theme.colors.accentDeep) } },
+            title = { Text(stringResource(R.string.import_failed), style = Theme.display(22)) },
+            text = { Text(stringResource(R.string.this_picture_could_not_be_loaded), style = Theme.body(15)) },
+            containerColor = Theme.colors.card, titleContentColor = Theme.colors.text, textContentColor = Theme.colors.muted,
+        )
+    }
+}
+
+/** "My Photos" before the first one: what the category is for, and the way in. */
+@Composable
+private fun NoPhotos(addPhoto: () -> Unit) {
+    val colors = Theme.colors
+    Column(
+        Modifier.fillMaxWidth().card(colors.surface, Theme.RADIUS_PANEL.dp).padding(28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Box(Modifier.size(64.dp).background(colors.sageTint, CircleShape), contentAlignment = Alignment.Center) {
+            Icon(Icons.Rounded.AddPhotoAlternate, null, tint = colors.onSageTint, modifier = Modifier.size(30.dp))
+        }
+        Text(stringResource(R.string.your_photos_are_puzzles_too), style = Theme.display(24), color = colors.text,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        PillButton(stringResource(R.string.add_photo), icon = Icons.Rounded.AddPhotoAlternate, size = 16, onClick = addPhoto)
+    }
 }
 
 private fun LazyGridScope.full(content: @Composable () -> Unit) =
     item(span = { GridItemSpan(maxLineSpan) }) { content() }
 
+/**
+ * The title and the buttons. On a phone they cannot share one row — the name
+ * came out as "Sasha's Puzz…" — so the buttons get a bar of their own above it.
+ */
 @Composable
-private fun Header(model: AppModel) {
+private fun Header(model: AppModel, addPhoto: () -> Unit, addFiles: () -> Unit) {
     val compact = LocalCompact.current
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)) {
-        Box(
-            Modifier.size(44.dp).clip(CircleShape).background(Theme.colors.accent),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Rounded.Extension, null, tint = Theme.colors.onAccent, modifier = Modifier.size(24.dp))
-        }
-        FittedLine(stringResource(R.string.sashas_puzzles), Theme.display(if (compact) 30 else 34), Theme.colors.text, Modifier.weight(1f))
-        val chip = if (compact) 40.dp else 44.dp
+    val chip = if (compact) 40.dp else 44.dp
+    val buttons = @Composable {
+        RoundIconButton(Icons.Rounded.AddPhotoAlternate, stringResource(R.string.add_photo), size = chip, onClick = addPhoto)
+        RoundIconButton(Icons.Rounded.CreateNewFolder, stringResource(R.string.import_from_files), size = chip, onClick = addFiles)
         Box {
             RoundIconButton(Icons.Rounded.Person, stringResource(R.string.profile), size = chip) {
                 model.sheet = AppModel.Sheet.PROFILE
@@ -157,6 +218,28 @@ private fun Header(model: AppModel) {
         }
         RoundIconButton(Icons.Rounded.Settings, stringResource(R.string.settings), size = chip) {
             model.sheet = AppModel.Sheet.SETTINGS
+        }
+    }
+    val title = @Composable { modifier: Modifier ->
+        Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(
+                Modifier.size(44.dp).clip(CircleShape).background(Theme.colors.accent),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Rounded.Extension, null, tint = Theme.colors.onAccent, modifier = Modifier.size(24.dp))
+            }
+            FittedLine(stringResource(R.string.sashas_puzzles), Theme.display(if (compact) 30 else 34), Theme.colors.text, Modifier.weight(1f))
+        }
+    }
+    if (compact) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End)) { buttons() }
+            title(Modifier.fillMaxWidth())
+        }
+    } else {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            title(Modifier.weight(1f))
+            buttons()
         }
     }
 }
@@ -313,9 +396,9 @@ private fun ResumeCard(model: AppModel, snapshot: GameSnapshot, width: Dp?) {
 @Composable
 private fun CategoryBar(model: AppModel, selected: ArtCategory?, onSelect: (ArtCategory?) -> Unit) {
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-        CategoryChip("${stringResource(R.string.all)} ${model.library.builtIn.size}", selected == null, icon = true) { onSelect(null) }
-        for (candidate in ArtCategory.entries) {
-            if (candidate == ArtCategory.MINE) continue
+        CategoryChip("${stringResource(R.string.all)} ${model.library.all.size}", selected == null, icon = true) { onSelect(null) }
+        // Own photos come first: an import switches to them, and the chip must be in view.
+        for (candidate in listOf(ArtCategory.MINE) + ArtCategory.entries.filter { it != ArtCategory.MINE }) {
             CategoryChip(stringResource(candidate.title), selected == candidate) { onSelect(candidate) }
         }
     }
@@ -341,23 +424,42 @@ private fun CategoryChip(title: String, selected: Boolean, icon: Boolean = false
 @Composable
 private fun PictureCard(model: AppModel, item: LibraryItem, solved: Long?, inProgress: Int?, onClick: () -> Unit) {
     val colors = Theme.colors
-    Column(Modifier.card(colors.card).pressable(onClick = onClick)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(1.5f)) {
-            LibraryThumbnail(model, item, Modifier.fillMaxSize(), washed = true)
-            Box(Modifier.padding(10.dp)) {
-                if (solved != null) Tag(stringResource(R.string.solved), style = TagStyle.SAGE)
-                else if (inProgress != null) Tag(pluralStringResource(R.plurals.x_pieces, inProgress, inProgress), style = TagStyle.CARD)
+    var menu by remember { mutableStateOf(false) }
+    Box {
+        Column(Modifier.card(colors.card).then(
+            if (item.isUserPhoto) Modifier.combinedClickable(onLongClick = { menu = true }, onClick = onClick) else Modifier.pressable(onClick = onClick),
+        )) {
+            Box(Modifier.fillMaxWidth().aspectRatio(1.5f)) {
+                LibraryThumbnail(model, item, Modifier.fillMaxSize(), washed = true)
+                Box(Modifier.padding(10.dp)) {
+                    if (solved != null) Tag(stringResource(R.string.solved), style = TagStyle.SAGE)
+                    else if (inProgress != null) Tag(pluralStringResource(R.plurals.x_pieces, inProgress, inProgress), style = TagStyle.CARD)
+                }
+            }
+            Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                OneLine(model.library.title(item), Theme.body(17, FontWeight.Bold), colors.text)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // The category gives way first, so the solved status is always readable.
+                    Text(stringResource(item.category.title), Modifier.weight(1f, fill = false), style = Theme.body(13), color = colors.muted,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Box(Modifier.size(4.dp).clip(CircleShape).background(colors.track))
+                    Text(solved?.let { TimeFormatting.clock(it) } ?: stringResource(R.string.not_solved),
+                        style = Theme.body(13), color = colors.muted, maxLines = 1)
+                }
             }
         }
-        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            OneLine(model.library.title(item), Theme.body(17, FontWeight.Bold), colors.text)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // The category gives way first, so the solved status is always readable.
-                Text(stringResource(item.category.title), Modifier.weight(1f, fill = false), style = Theme.body(13), color = colors.muted,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Box(Modifier.size(4.dp).clip(CircleShape).background(colors.track))
-                Text(solved?.let { TimeFormatting.clock(it) } ?: stringResource(R.string.not_solved),
-                    style = Theme.body(13), color = colors.muted, maxLines = 1)
+        if (item.isUserPhoto) {
+            DropdownMenu(menu, onDismissRequest = { menu = false }, containerColor = colors.card) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.start_puzzle), style = Theme.body(15), color = colors.text) },
+                    leadingIcon = { Icon(Icons.Rounded.PlayArrow, null, tint = colors.text) },
+                    onClick = { menu = false; onClick() },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.delete_photo), style = Theme.body(15), color = colors.accentDeep) },
+                    leadingIcon = { Icon(Icons.Rounded.Delete, null, tint = colors.accentDeep) },
+                    onClick = { menu = false; model.deletePhoto(item) },
+                )
             }
         }
     }

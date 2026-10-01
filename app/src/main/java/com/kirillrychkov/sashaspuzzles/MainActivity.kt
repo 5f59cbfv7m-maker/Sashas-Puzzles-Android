@@ -18,7 +18,7 @@ class MainActivity : ComponentActivity() {
         val debuggable = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
         val stage = if (debuggable && savedInstanceState == null) intent.getStringExtra("stage") else null
         setContent { RootScreen(model, skipSplash = stage != null) }
-        stage?.let { model.runStage(it, intent.getStringExtra("achievements")) }
+        stage?.let { model.runStage(it, intent.getStringExtra("achievements"), intent.getStringExtra("item")) }
     }
 
     override fun onStop() {

@@ -116,7 +116,7 @@ fun SettingsScreen(model: AppModel, onDone: () -> Unit) {
                         modifier = Modifier.fillMaxWidth().pressable { confirmReset = true }.padding(horizontal = 14.dp, vertical = 13.dp))
                 }
                 Text(
-                    substituted(R.string.sashas_puzzles_x_built_in_pictures_x_of_your_pho, model.library.builtIn.size, 0,
+                    substituted(R.string.sashas_puzzles_x_built_in_pictures_x_of_your_pho, model.library.builtIn.size, model.library.userItems.size,
                         plural = mapOf(1 to R.plurals.sashas_puzzles_x_built_in_pictures_x_of_your_pho_arg1,
                             2 to R.plurals.sashas_puzzles_x_built_in_pictures_x_of_your_pho_arg2)),
                     style = Theme.body(13), color = colors.faint, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 8.dp),

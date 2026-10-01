@@ -56,6 +56,13 @@ class ImageStore(private val context: Context) {
 
     fun purgeMemory() = memory.evictAll()
 
+    /** Drops a deleted photo's cached copies, on disk and in memory. */
+    fun forget(item: LibraryItem) {
+        val prefix = item.id.replace('/', '_') + "-"
+        cacheDirectory.listFiles()?.filter { it.name.startsWith(prefix) }?.forEach { it.delete() }
+        memory.snapshot().keys.filter { it.item.id == item.id }.forEach { memory.remove(it) }
+    }
+
     private fun produce(request: Request): Bitmap? {
         val cacheFile = File(cacheDirectory, cacheName(request))
         if (cacheFile.exists()) {
@@ -63,7 +70,7 @@ class ImageStore(private val context: Context) {
         }
         val decoded = when (val source = request.item.source) {
             is ImageSource.Bundled -> decode(request.longSide) { context.assets.open("${Library.FOLDER}/${source.fileName}") }
-            is ImageSource.Imported -> File(context.filesDir, "Photos/${source.fileName}").takeIf { it.exists() }
+            is ImageSource.Imported -> File(context.filesDir, "${Library.PHOTOS}/${source.fileName}").takeIf { it.exists() }
                 ?.let { file -> decode(request.longSide) { file.inputStream() } }
         } ?: return null
         val produced = crop(decoded, request.aspect.ratio)

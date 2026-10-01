@@ -78,6 +78,11 @@ an update does not flag old medals as new). Keys are the iOS raw values. "A week
 streak ever, so the medal is not taken back when a streak breaks. The chime is `res/raw/achievement.wav`,
 written by `Scripts/make-achievement-tone.py` from the partials the iOS app synthesizes.
 
+**Own photos are copies.** `Library.importPhoto` decodes the picked image upright (ImageDecoder on
+Android 9+, which also reads HEIC; EXIF rotation by hand before that), caps it at 4096 px and writes a JPEG to
+`files/Photos/`, listed in `files/library.json`. The photo picker needs no storage permission. Deleting a photo
+also deletes its games in progress and its cached copies.
+
 **Signing.** The upload key and `keystore.properties` never enter the repository (git-ignored). Debug
 builds install on a phone over USB without any certificate and do not expire.
 
@@ -85,6 +90,7 @@ builds install on a phone over USB without any certificate and do not expire.
 
 Debug builds accept a stage: `adb shell am start -n com.kirillrychkov.sashaspuzzles/.MainActivity --es stage completed`
 (`board`, `scattered`, `completed`, `profile`); add `--es achievements sprinter,nightmare` to make the
-completion card reveal those medals. Screenshots: `adb exec-out screencap -p > shot.png`. Language:
+completion card reveal those medals, and `--es item <id>` to play a given picture (an own photo's id is in
+`files/library.json`). Screenshots: `adb exec-out screencap -p > shot.png`. Language:
 `adb shell cmd locale set-app-locales com.kirillrychkov.sashaspuzzles --locales ru-RU`; dark:
 `adb shell cmd uimode night yes`.

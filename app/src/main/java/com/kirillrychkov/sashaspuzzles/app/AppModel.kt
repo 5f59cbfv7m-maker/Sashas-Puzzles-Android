@@ -149,6 +149,38 @@ class AppModel(context: Context) {
         refreshSaves()
     }
 
+    // Own photos
+
+    /** True while picked photos are being copied into the library. */
+    var importing by mutableStateOf(false)
+        private set
+    /** Set when a picked image could not be read; the home screen shows it and clears it. */
+    var importFailed by mutableStateOf(false)
+
+    /** Copies picked images in; `onImported` runs when at least one made it. */
+    fun importPhotos(uris: List<android.net.Uri>, fromFiles: Boolean, onImported: () -> Unit) {
+        if (uris.isEmpty()) return
+        scope.launch {
+            importing = true
+            var imported = 0
+            for (uri in uris) {
+                runCatching { library.importPhoto(uri, fromFiles) }
+                    .onSuccess { imported++ }
+                    .onFailure { importFailed = true }
+            }
+            importing = false
+            if (imported > 0) onImported()
+        }
+    }
+
+    /** Removes a photo with its games in progress, which could not be opened without it. */
+    fun deletePhoto(item: LibraryItem) {
+        for (snapshot in savedGames) if (snapshot.itemId == item.id) saveStore.delete(snapshot.id)
+        library.delete(item)
+        images.forget(item)
+        refreshSaves()
+    }
+
     fun deleteAllSaves() {
         saveStore.deleteAll()
         refreshSaves()
@@ -159,10 +191,10 @@ class AppModel(context: Context) {
      * checked without playing to it — `adb shell am start -n …/.MainActivity --es stage completed`.
      * Stages: `board` (48 pieces), `scattered`, `completed` (12 pieces, solved),
      * `profile` (every medal earned so far marked new). `--es achievements sprinter,nightmare`
-     * makes the completion reveal those medals.
+     * makes the completion reveal those medals; `--es item <id>` plays that picture.
      */
-    fun runStage(stage: String, achievements: String? = null) {
-        val item = library.builtIn.getOrNull(3) ?: return
+    fun runStage(stage: String, achievements: String? = null, itemId: String? = null) {
+        val item = itemId?.let { library.item(it) } ?: library.builtIn.getOrNull(3) ?: return
         settings.hasSeenOnboarding = true
         sheet = null
         forcedAchievements = achievements?.split(',')?.mapNotNull { Achievement.fromKey(it.trim()) }
